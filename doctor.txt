@@ -40,10 +40,10 @@ synon: be am is are was
 
 key: xnone_sent
   decomp: *
-    reasmb: You sound quite ?em
+    reasmb: This sound quite ?em
     reasmb: Are you feeling ?em right now?
     reasmb: I think I know you might be feeling right now. Can it be described as ?em ?
-    reasmb: What is causing you to be ?em though?
+    reasmb: What is causing this ?em?
     reasmb: How does it manifest in the body when you feel ?em ?
 key: x_sent_reaction
   decomp: *
