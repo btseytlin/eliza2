@@ -36,6 +36,22 @@ synon: happy elated glad better
 synon: cannot can't
 synon: everyone everybody nobody noone
 synon: be am is are was
+
+
+key: xnone_sent
+  decomp: *
+    reasmb: You sound quite ?em
+    reasmb: Are you feeling ?em right now?
+    reasmb: I think I know you might be feeling right now. Can it be described as ?em ?
+    reasmb: What is causing you to be ?em though?
+    reasmb: How does it manifest in the body when you feel ?em ?
+key: x_sent_reaction
+  decomp: *
+    reasmb: This sounds quite ?em .
+    reasmb: You must be ?em to be saying that.
+    reasmb: Does it make you ?em ?
+    reasmb: Feeling ?em ?
+    reasmb: ?em about it?
 key: xnone
   decomp: *
     reasmb: I'm not sure I understand you fully.

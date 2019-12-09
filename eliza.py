@@ -1,7 +1,9 @@
 import logging
 import random
 import re
+from config import BotConfig
 from collections import namedtuple
+from emotion import get_emotion
 
 # Fix Python2/Python3 incompatibility
 try: input = raw_input
@@ -23,6 +25,15 @@ class Decomp:
         self.save = save
         self.reasmbs = reasmbs
         self.next_reasmb_index = 0
+
+
+def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_emotion_threshold):
+    storng_emotions_dict = dict(emotion_dict)
+    for key in emotion_dict.keys():
+        if emotion_dict[key] < threshold:
+            del storng_emotions_dict[key]
+    strong_emotions = sorted(list(storng_emotions_dict.items()), key=lambda x: -x[1])
+    return strong_emotions
 
 
 class Eliza:
@@ -110,8 +121,9 @@ class Eliza:
 
     def _next_reasmb(self, decomp):
         index = decomp.next_reasmb_index
-        result = decomp.reasmbs[index % len(decomp.reasmbs)]
-        decomp.next_reasmb_index = index + 1
+        # result = decomp.reasmbs[index % len(decomp.reasmbs)]
+        result = random.choice(decomp.reasmbs)
+        # decomp.next_reasmb_index = index + 1
         return result
 
     def _reassemble(self, reasmb, results):
@@ -138,6 +150,16 @@ class Eliza:
             word_lower = word.lower()
             if word_lower in sub:
                 output.extend(sub[word_lower])
+            else:
+                output.append(word)
+        return output
+
+    def _sub_emotion(self, words, sentiment):
+        output = []
+        for word in words:
+            word_lower = word.lower()
+            if word_lower == '?em':
+                output.append(sentiment.lower())
             else:
                 output.append(word)
         return output
@@ -172,6 +194,12 @@ class Eliza:
         if text.lower() in self.quits:
             return None
 
+        emotions = get_emotion(text)
+        log.debug('Emotions: %s', emotions)
+        strong_emotions = strong_emotions_tuples(emotions)
+        log.debug('Emotions after filtering: %s', strong_emotions)
+        dominant_emotion = strong_emotions[0][0] if strong_emotions else None
+
         text = re.sub(r'\s*\.+\s*', ' . ', text)
         text = re.sub(r'\s*,+\s*', ' , ', text)
         text = re.sub(r'\s*;+\s*', ' ; ', text)
@@ -188,20 +216,31 @@ class Eliza:
         log.debug('Sorted keys: %s', [(k.word, k.weight) for k in keys])
 
         output = None
-
         for key in keys:
             output = self._match_key(words, key)
             if output:
                 log.debug('Output from key: %s', output)
+
+                if dominant_emotion:
+                    reaction_preppend = self._sub_emotion(self._next_reasmb(self.keys['x_sent_reaction'].decomps[0]), dominant_emotion)
+
+                    output = reaction_preppend + ['\n '] + output
+                    log.debug('Output with emotion preppend: %s', output)
+
                 break
+
         if not output:
             if self.memory:
                 index = random.randrange(len(self.memory))
                 output = self.memory.pop(index)
                 log.debug('Output from memory: %s', output)
             else:
-                output = self._next_reasmb(self.keys['xnone'].decomps[0])
-                log.debug('Output from xnone: %s', output)
+                if strong_emotions:
+                    output = self._sub_emotion(self._next_reasmb(self.keys['xnone_sent'].decomps[0]), dominant_emotion)
+                    log.debug('Output from xnone with emotion: %s', output)
+                else:
+                    output = self._next_reasmb(self.keys['xnone'].decomps[0])
+                    log.debug('Output from xnone: %s', output)
 
         return " ".join(output)
 

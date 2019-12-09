@@ -1,4 +1,4 @@
-from confi import BaseEnvironConfig, IntConfig, ConfigField
+from confi import BaseEnvironConfig, FloatConfig, ConfigField
 
 
 class BotConfig(BaseEnvironConfig):
@@ -10,3 +10,8 @@ class BotConfig(BaseEnvironConfig):
 
     # Eliza configs
     script_path = ConfigField(default='doctor.txt')
+
+    # Emotion api
+    emotion_api_url = ConfigField(default='https://apis.paralleldots.com/v4/emotion')
+    emotion_key = ConfigField(required=True)
+    emotion_emotion_threshold = FloatConfig(default=0.3)
