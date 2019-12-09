@@ -1,0 +1,11 @@
+version: "3.7"
+services:
+  eliza_bot:
+    build:
+      context: .
+    command: python bot.py
+    volumes:
+      - "./:/usr/local/src/:ro"
+    env_file:
+      - "local.env"
+    network_mode: host
