@@ -8,10 +8,12 @@ class BotConfig(BaseEnvironConfig):
     proxy_password = ConfigField()
     tg_token = ConfigField(required=True)
 
+    admin_ids = ConfigField(processor=lambda s: [int(id_) for id_ in s.split(',')])
+
     # Eliza configs
     script_path = ConfigField(default='doctor.txt')
 
     # Emotion api
     emotion_api_url = ConfigField(default='https://apis.paralleldots.com/v4/emotion')
     emotion_key = ConfigField(required=True)
-    emotion_emotion_threshold = FloatConfig(default=0.3)
+    emotion_emotion_threshold = FloatConfig(default=0.7)

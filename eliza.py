@@ -36,6 +36,14 @@ def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_emotion_thr
     return strong_emotions
 
 
+def sep_punctuation(text):
+    text = re.sub(r'\s*\.+\s*', ' . ', text)
+    text = re.sub(r'\s*,+\s*', ' , ', text)
+    text = re.sub(r'\s*;+\s*', ' ; ', text)
+    text = re.sub(r'\s*\?+\s*', ' ? ', text)
+    return text
+
+
 class Eliza:
     def __init__(self):
         self.initials = []
@@ -55,6 +63,7 @@ class Eliza:
                 if not line.strip():
                     continue
                 tag, content = [part.strip() for part in line.split(':')]
+                content = sep_punctuation(content)
                 if tag == 'initial':
                     self.initials.append(content)
                 elif tag == 'final':
@@ -158,7 +167,7 @@ class Eliza:
         output = []
         for word in words:
             word_lower = word.lower()
-            if word_lower == '?em':
+            if word_lower == '&em':
                 output.append(sentiment.lower())
             else:
                 output.append(word)
@@ -200,9 +209,7 @@ class Eliza:
         log.debug('Emotions after filtering: %s', strong_emotions)
         dominant_emotion = strong_emotions[0][0] if strong_emotions else None
 
-        text = re.sub(r'\s*\.+\s*', ' . ', text)
-        text = re.sub(r'\s*,+\s*', ' , ', text)
-        text = re.sub(r'\s*;+\s*', ' ; ', text)
+        text = sep_punctuation(text)
         log.debug('After punctuation cleanup: %s', text)
 
         words = [w for w in text.split(' ') if w]
@@ -242,7 +249,9 @@ class Eliza:
                     output = self._next_reasmb(self.keys['xnone'].decomps[0])
                     log.debug('Output from xnone: %s', output)
 
-        return " ".join(output)
+        out_lines = " ".join(output)
+        out_lines = re.sub(r'\s([?.!"](?:\s|$))', r'\1', out_lines) # Remove spaces before punctuation
+        return out_lines
 
     def initial(self):
         return random.choice(self.initials)
@@ -269,6 +278,7 @@ def main():
     eliza = Eliza()
     eliza.load('doctor.txt')
     eliza.run()
+
 
 if __name__ == '__main__':
     logging.basicConfig()
