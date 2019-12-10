@@ -8,7 +8,8 @@ from emotion import get_emotion
 # Fix Python2/Python3 incompatibility
 try: input = raw_input
 except NameError: pass
-
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                     level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
@@ -20,19 +21,28 @@ class Key:
 
 
 class Decomp:
-    def __init__(self, parts, save, reasmbs):
+    def __init__(self, parts, save, reasmbs, skip_emotional_reaction, emotions):
         self.parts = parts
         self.save = save
         self.reasmbs = reasmbs
+        self.emotions = emotions # A decomp is only applied if the source text had one of the emotions from this list
+        self.skip_emotional_reaction = skip_emotional_reaction # If True, will not preppend an acknowledgement of emotions before the response
         self.next_reasmb_index = 0
 
 
 def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_emotion_threshold):
+    emotion_replace = {
+        'fear': 'afraid'
+    }
+
     storng_emotions_dict = dict(emotion_dict)
+    #e.g. {'Bored': 0.0337543563, 'Sad': 0.0384947692, 'Happy': 0.3989005989, 'Angry': 0.1052993212, 'Excited': 0.276652534, 'Fear': 0.1468984205}
     for key in emotion_dict.keys():
         if emotion_dict[key] < threshold:
             del storng_emotions_dict[key]
     strong_emotions = sorted(list(storng_emotions_dict.items()), key=lambda x: -x[1])
+    strong_emotions = [(pair[0].lower().strip(), pair[1]) for pair in strong_emotions]
+    strong_emotions = [(emotion_replace.get(pair[0], pair[0]), pair[1]) for pair in strong_emotions]
     return strong_emotions
 
 
@@ -41,6 +51,7 @@ def sep_punctuation(text):
     text = re.sub(r'\s*,+\s*', ' , ', text)
     text = re.sub(r'\s*;+\s*', ' ; ', text)
     text = re.sub(r'\s*\?+\s*', ' ? ', text)
+    text = re.sub(r'\s*!+\s*', ' ! ', text)
     return text
 
 
@@ -88,10 +99,18 @@ class Eliza:
                 elif tag == 'decomp':
                     parts = content.split(' ')
                     save = False
+                    skip_emotional_reaction = False
+                    emotions = []
                     if parts[0] == '$':
                         save = True
                         parts = parts[1:]
-                    decomp = Decomp(parts, save, [])
+                    if parts[0] == '&em_skip':
+                        skip_emotional_reaction = True
+                        parts = parts[1:]
+                    if parts[0] == '&em_only':
+                        emotions = parts[1].split('|')
+                        parts = parts[2:]
+                    decomp = Decomp(parts, save, [], skip_emotional_reaction, emotions)
                     key.decomps.append(decomp)
                 elif tag == 'reasmb':
                     parts = content.split(' ')
@@ -135,7 +154,7 @@ class Eliza:
         # decomp.next_reasmb_index = index + 1
         return result
 
-    def _reassemble(self, reasmb, results):
+    def _reassemble(self, reasmb, results, emotion):
         output = []
         for reword in reasmb:
             if not reword:
@@ -145,10 +164,12 @@ class Eliza:
                 if index < 1 or index > len(results):
                     raise ValueError("Invalid result index {}".format(index))
                 insert = results[index - 1]
-                for punct in [',', '.', ';']:
+                for punct in [',', '.', ';', '?', '!']:
                     if punct in insert:
                         insert = insert[:insert.index(punct)]
                 output.extend(insert)
+            elif reword == '&em' and emotion:
+                output.append(emotion)
             else:
                 output.append(reword)
         return output
@@ -163,18 +184,22 @@ class Eliza:
                 output.append(word)
         return output
 
-    def _sub_emotion(self, words, sentiment):
+    def _sub_emotion(self, words, emotion):
         output = []
         for word in words:
             word_lower = word.lower()
             if word_lower == '&em':
-                output.append(sentiment.lower())
+                output.append(emotion.lower())
             else:
                 output.append(word)
         return output
 
-    def _match_key(self, words, key):
+    def _match_key(self, words, key, emotion):
         for decomp in key.decomps:
+            if decomp.emotions and emotion not in decomp.emotions:
+                log.debug('Input emotion is %s, decomp expected one of %s. Skipped decomp.', emotion, decomp.emotions)
+                continue
+
             results = self._match_decomp(decomp.parts, words)
             if results is None:
                 log.debug('Decomp did not match: %s', decomp.parts)
@@ -190,8 +215,17 @@ class Eliza:
                 if not goto_key in self.keys:
                     raise ValueError("Invalid goto key {}".format(goto_key))
                 log.debug('Goto key: %s', goto_key)
-                return self._match_key(words, self.keys[goto_key])
-            output = self._reassemble(reasmb, results)
+                return self._match_key(words, self.keys[goto_key], emotion)
+            output = self._reassemble(reasmb, results, emotion)
+
+            if emotion and not decomp.skip_emotional_reaction:
+                reaction_preppend = self._sub_emotion(
+                    self._next_reasmb(self.keys['x_sent_reaction'].decomps[0]),
+                    emotion)
+
+                output = reaction_preppend + ['\n '] + output
+                log.debug('Output with emotion preppend: %s', output)
+
             if decomp.save:
                 self.memory.append(output)
                 log.debug('Saved to memory: %s', output)
@@ -203,11 +237,15 @@ class Eliza:
         if text.lower() in self.quits:
             return None
 
-        emotions = get_emotion(text)
-        log.debug('Emotions: %s', emotions)
-        strong_emotions = strong_emotions_tuples(emotions)
-        log.debug('Emotions after filtering: %s', strong_emotions)
-        dominant_emotion = strong_emotions[0][0] if strong_emotions else None
+        strong_emotions = None
+        dominant_emotion = None
+
+        if BotConfig.use_emmotion:
+            emotions = get_emotion(text)
+            log.debug('Emotions: %s', emotions)
+            strong_emotions = strong_emotions_tuples(emotions)
+            log.debug('Emotions after filtering: %s', strong_emotions)
+            dominant_emotion = strong_emotions[0][0] if strong_emotions else None
 
         text = sep_punctuation(text)
         log.debug('After punctuation cleanup: %s', text)
@@ -224,16 +262,9 @@ class Eliza:
 
         output = None
         for key in keys:
-            output = self._match_key(words, key)
+            output = self._match_key(words, key, dominant_emotion)
             if output:
                 log.debug('Output from key: %s', output)
-
-                if dominant_emotion:
-                    reaction_preppend = self._sub_emotion(self._next_reasmb(self.keys['x_sent_reaction'].decomps[0]), dominant_emotion)
-
-                    output = reaction_preppend + ['\n '] + output
-                    log.debug('Output with emotion preppend: %s', output)
-
                 break
 
         if not output:

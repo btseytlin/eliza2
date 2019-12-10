@@ -52,8 +52,8 @@ def respond(update, context):
     context.user_data['memory'] = eliza.memory
     response_lines = eliza_response.split('\n')
     for line in response_lines:
-        context.bot.send_message(chat_id=update.effective_chat.id, text=line.capitalize())
-
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text=line.strip().capitalize())
 
 
 respond_handler = MessageHandler(Filters.text, respond)
