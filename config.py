@@ -18,3 +18,6 @@ class BotConfig(BaseEnvironConfig):
     emotion_api_url = ConfigField(default='https://apis.paralleldots.com/v4/emotion')
     emotion_key = ConfigField(required=True)
     emotion_emotion_threshold = FloatConfig(default=0.45)
+
+    use_paraphrase = BooleanConfig(default=False)
+    paraphrase_url = ConfigField(default='https://quillbot.com/api/singleFlip')

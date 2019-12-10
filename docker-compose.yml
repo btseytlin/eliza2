@@ -3,8 +3,8 @@ services:
   eliza_bot:
     build:
       context: .
-    command: python bot.py
-#    command: python eliza.py
+#    command: python bot.py
+    command: python eliza.py
     volumes:
       - "./:/usr/local/src/:ro"
     env_file:

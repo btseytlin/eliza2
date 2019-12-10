@@ -1,6 +1,7 @@
 import logging
 import random
 import re
+import requests
 from config import BotConfig
 from collections import namedtuple
 from emotion import get_emotion
@@ -8,8 +9,6 @@ from emotion import get_emotion
 # Fix Python2/Python3 incompatibility
 try: input = raw_input
 except NameError: pass
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                     level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
@@ -28,6 +27,18 @@ class Decomp:
         self.emotions = emotions # A decomp is only applied if the source text had one of the emotions from this list
         self.skip_emotional_reaction = skip_emotional_reaction # If True, will not preppend an acknowledgement of emotions before the response
         self.next_reasmb_index = 0
+
+
+def paraphrase(text):
+    req = requests.get(BotConfig.paraphrase_url, params={
+        # 'text': text,
+        'alt': text,
+        'fthresh': 9
+    })
+
+    assert req.status_code == 200, 'Parahprase API responded with error ' + req.text
+    log.debug('Paraphraser reponse %s', req.text)
+    return req.json()['flipped_alt']
 
 
 def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_emotion_threshold):
@@ -52,6 +63,16 @@ def sep_punctuation(text):
     text = re.sub(r'\s*;+\s*', ' ; ', text)
     text = re.sub(r'\s*\?+\s*', ' ? ', text)
     text = re.sub(r'\s*!+\s*', ' ! ', text)
+    return text
+
+
+def capitalize_sentences(text):
+    p = re.compile(r'(?<=[\.\?!]\s)(\w+)')
+
+    def cap(match):
+        return (match.group().capitalize())
+
+    p.sub(cap, text)
     return text
 
 
@@ -282,6 +303,11 @@ class Eliza:
 
         out_lines = " ".join(output)
         out_lines = re.sub(r'\s([?.!"](?:\s|$))', r'\1', out_lines) # Remove spaces before punctuation
+        out_lines = capitalize_sentences(out_lines)
+        log.debug('Eliza reponse: %s', out_lines)
+        if BotConfig.use_paraphrase:# and random.choice([0, 0, 1]) == 1:
+            out_lines = paraphrase(out_lines)
+            log.debug('Paraphrased: %s', out_lines)
         return out_lines
 
     def initial(self):
