@@ -6,9 +6,7 @@ from config import BotConfig
 from collections import namedtuple
 from emotion import get_emotion
 
-# Fix Python2/Python3 incompatibility
-try: input = raw_input
-except NameError: pass
+
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 

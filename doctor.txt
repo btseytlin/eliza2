@@ -191,6 +191,8 @@ key: was 2
     reasmb: Perhaps I was (2).
     reasmb: What if I had been (2)?
 key: i
+  decomp: * i love you *
+    reasmb: I love you too.
   decomp: * i @desire *
     reasmb: What would it mean to you if you got (3)?
     reasmb: Why do you want (3)?

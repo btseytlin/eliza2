@@ -2,3 +2,4 @@ python-telegram-bot
 confi
 requests
 pysocks
+gingerit

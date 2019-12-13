@@ -12,6 +12,9 @@ from telegram import ChatAction
 from telegram.ext import Updater, MessageHandler, Filters
 from eliza import Eliza
 from config import BotConfig
+from gingerit.gingerit import GingerIt
+
+gparser = GingerIt()
 
 
 tg_token = BotConfig.tg_token
@@ -43,6 +46,12 @@ def send_typing_action(func):
     return command_func
 
 
+def fix_grammar(s):
+    result = gparser.parse(s)['result']
+    logging.debug('Fixed grammar from "%s" to "%s"', s, result)
+    return result
+
+
 def cap_sentence(s):
     return s[:1].upper() + s[1:]
 
@@ -62,7 +71,7 @@ def respond(update, context):
     response_lines = eliza_response.split('\n')
     for line in response_lines:
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=cap_sentence(line))
+                                 text=fix_grammar(cap_sentence(line)))
 
 
 respond_handler = MessageHandler(Filters.text, respond)
