@@ -10,6 +10,7 @@ from emotion import get_emotion
 try: input = raw_input
 except NameError: pass
 log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 
 class Key:
@@ -47,13 +48,15 @@ def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_emotion_thr
     }
 
     storng_emotions_dict = dict(emotion_dict)
+
     #e.g. {'Bored': 0.0337543563, 'Sad': 0.0384947692, 'Happy': 0.3989005989, 'Angry': 0.1052993212, 'Excited': 0.276652534, 'Fear': 0.1468984205}
+
     for key in emotion_dict.keys():
         if emotion_dict[key] < threshold:
             del storng_emotions_dict[key]
     strong_emotions = sorted(list(storng_emotions_dict.items()), key=lambda x: -x[1])
     strong_emotions = [(pair[0].lower().strip(), pair[1]) for pair in strong_emotions]
-    strong_emotions = [(emotion_replace.get(pair[0], pair[0]), pair[1]) for pair in strong_emotions]
+    strong_emotions = [(emotion_replace.get(pair[0], pair[0]), pair[1]) for pair in strong_emotions if pair[0] != 'Bored']
     return strong_emotions
 
 
@@ -64,6 +67,10 @@ def sep_punctuation(text):
     text = re.sub(r'\s*\?+\s*', ' ? ', text)
     text = re.sub(r'\s*!+\s*', ' ! ', text)
     return text
+
+
+def de_emojify(s):
+    return s.encode('ascii', 'ignore').decode('ascii')
 
 
 def capitalize_sentences(text):
@@ -256,7 +263,7 @@ class Eliza:
 
     def respond(self, text):
         if text.lower() in self.quits:
-            return None
+            return self.final()
 
         strong_emotions = None
         dominant_emotion = None
@@ -267,6 +274,8 @@ class Eliza:
             strong_emotions = strong_emotions_tuples(emotions)
             log.debug('Emotions after filtering: %s', strong_emotions)
             dominant_emotion = strong_emotions[0][0] if strong_emotions else None
+
+        text = de_emojify(text)
 
         text = sep_punctuation(text)
         log.debug('After punctuation cleanup: %s', text)
@@ -305,6 +314,7 @@ class Eliza:
         out_lines = re.sub(r'\s([?.!"](?:\s|$))', r'\1', out_lines) # Remove spaces before punctuation
         out_lines = capitalize_sentences(out_lines)
         log.debug('Eliza reponse: %s', out_lines)
+
         if BotConfig.use_paraphrase:# and random.choice([0, 0, 1]) == 1:
             out_lines = paraphrase(out_lines)
             log.debug('Paraphrased: %s', out_lines)

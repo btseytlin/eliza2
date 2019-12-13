@@ -1,5 +1,9 @@
-from functools import wraps
 import logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                     level=logging.DEBUG)
+
+
+from functools import wraps
 from telegram import ParseMode
 from telegram.utils.helpers import mention_html
 import sys
@@ -9,8 +13,6 @@ from telegram.ext import Updater, MessageHandler, Filters
 from eliza import Eliza
 from config import BotConfig
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                     level=logging.DEBUG)
 
 tg_token = BotConfig.tg_token
 
@@ -41,8 +43,15 @@ def send_typing_action(func):
     return command_func
 
 
+def cap_sentence(s):
+    return s[:1].upper() + s[1:]
+
+
 @send_typing_action
 def respond(update, context):
+    if not update.message or not update.message.text:
+        return
+
     eliza = Eliza()
     eliza.load(BotConfig.script_path)
     memory = context.user_data.get('memory')
@@ -53,7 +62,7 @@ def respond(update, context):
     response_lines = eliza_response.split('\n')
     for line in response_lines:
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=line.strip().capitalize())
+                                 text=cap_sentence(line))
 
 
 respond_handler = MessageHandler(Filters.text, respond)
@@ -82,6 +91,8 @@ def error_handler(update, context):
     for dev_id in devs:
         context.bot.send_message(dev_id, text, parse_mode=ParseMode.HTML)
     raise
+
+
 dispatcher.add_error_handler(error_handler)
 
 
