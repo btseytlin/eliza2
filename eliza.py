@@ -380,6 +380,7 @@ class Eliza:
         return random.choice(self.initials)
 
     def final(self):
+        self.remembered['name'] = None
         return random.choice(self.finals)
 
     def run(self):
