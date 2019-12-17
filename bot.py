@@ -64,10 +64,14 @@ def respond(update, context):
     eliza = Eliza()
     eliza.load(BotConfig.script_path)
     memory = context.user_data.get('memory')
+    remembered_name = context.user_data.get('remembered_name')
+    if remembered_name:
+        eliza.remembered['name'] = remembered_name
     if memory:
         eliza.memory = memory 
     eliza_response = eliza.respond(update.message.text)
     context.user_data['memory'] = eliza.memory
+    context.user_data['remembered_name'] = eliza.remembered['name']
     response_lines = eliza_response.split('\n')
     for line in response_lines:
         context.bot.send_message(chat_id=update.effective_chat.id,

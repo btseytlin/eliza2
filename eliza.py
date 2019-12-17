@@ -3,7 +3,6 @@ import random
 import re
 import requests
 from config import BotConfig
-from collections import namedtuple
 from emotion import get_emotion
 
 
@@ -11,21 +10,21 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 
-class Key:
-    def __init__(self, word, weight, decomps):
-        self.word = word
-        self.weight = weight
-        self.decomps = decomps
-
-
-class Decomp:
-    def __init__(self, parts, save, reasmbs, skip_emotional_reaction, emotions):
-        self.parts = parts
-        self.save = save
-        self.reasmbs = reasmbs
-        self.emotions = emotions # A decomp is only applied if the source text had one of the emotions from this list
-        self.skip_emotional_reaction = skip_emotional_reaction # If True, will not preppend an acknowledgement of emotions before the response
-        self.next_reasmb_index = 0
+def get_ner(text):
+    req = requests.post(
+        BotConfig.ner_api_url,
+        data={
+            'text': text,
+            'lang_code': 'en',
+            'api_key': BotConfig.ner_key
+        },
+    )
+    assert req.status_code == 200, 'Invalid status code from NER API ' + req.text
+    entities = req.json()['entities']
+    entities = sorted([entity for entity in entities
+                       if entity['confidence_score'] > BotConfig.ner_threshold],
+                      key=lambda e: -e['confidence_score'])
+    return entities
 
 
 def paraphrase(text):
@@ -40,7 +39,7 @@ def paraphrase(text):
     return req.json()['flipped_alt']
 
 
-def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_emotion_threshold):
+def strong_emotions_tuples(emotion_dict, threshold=BotConfig.emotion_threshold):
     emotion_replace = {
         'fear': 'afraid'
     }
@@ -81,6 +80,25 @@ def capitalize_sentences(text):
     return text
 
 
+class Key:
+    def __init__(self, word, weight, decomps):
+        self.word = word
+        self.weight = weight
+        self.decomps = decomps
+
+
+class Decomp:
+    def __init__(self, parts, save, reasmbs, skip_emotional_reaction=False, emotions=None, has_names=False, remember_name=False):
+        self.parts = parts
+        self.save = save
+        self.reasmbs = reasmbs
+        self.emotions = emotions or [] # A decomp is only applied if the source text had one of the emotions from this list
+        self.skip_emotional_reaction = skip_emotional_reaction # If True, will not preppend an acknowledgement of emotions before the response
+        self.remember_name = remember_name
+        self.has_names = has_names
+        self.next_reasmb_index = 0
+
+
 class Eliza:
     def __init__(self):
         self.initials = []
@@ -91,6 +109,10 @@ class Eliza:
         self.synons = {}
         self.keys = {}
         self.memory = []
+
+        self.remembered = {
+            'name': None
+        }
 
     def load(self, path):
         key = None
@@ -126,6 +148,8 @@ class Eliza:
                     parts = content.split(' ')
                     save = False
                     skip_emotional_reaction = False
+                    has_names = False
+                    remember_name = False
                     emotions = []
                     if parts[0] == '$':
                         save = True
@@ -136,21 +160,30 @@ class Eliza:
                     if parts[0] == '&em_only':
                         emotions = parts[1].split('|')
                         parts = parts[2:]
-                    decomp = Decomp(parts, save, [], skip_emotional_reaction, emotions)
+                    if parts[0] == '&name_remember':
+                        remember_name = True
+                        parts = parts[1:]
+                    if remember_name or '&name' in parts:
+                        has_names = True
+                    decomp = Decomp(parts, save, [], skip_emotional_reaction, emotions, has_names, remember_name)
                     key.decomps.append(decomp)
                 elif tag == 'reasmb':
                     parts = content.split(' ')
                     decomp.reasmbs.append(parts)
 
-    def _match_decomp_r(self, parts, words, results):
+    def _match_decomp_r(self, parts, words, results, name):
         if not parts and not words:
             return True
-        if not parts or (not words and parts != ['*']):
+        if not parts or (not words and parts not in ['*', '&name']):
             return False
-        if parts[0] == '*':
+        if parts[0] == '&name':
+            words = [w for w in words if w not in name]
+            results.append(name)
+            return self._match_decomp_r(parts[1:], words, results, name)
+        elif parts[0] == '*':
             for index in range(len(words), -1, -1):
                 results.append(words[:index])
-                if self._match_decomp_r(parts[1:], words[index:], results):
+                if self._match_decomp_r(parts[1:], words[index:], results, name):
                     return True
                 results.pop()
             return False
@@ -161,15 +194,15 @@ class Eliza:
             if not words[0].lower() in self.synons[root]:
                 return False
             results.append([words[0]])
-            return self._match_decomp_r(parts[1:], words[1:], results)
+            return self._match_decomp_r(parts[1:], words[1:], results, name)
         elif parts[0].lower() != words[0].lower():
             return False
         else:
-            return self._match_decomp_r(parts[1:], words[1:], results)
+            return self._match_decomp_r(parts[1:], words[1:], results, name)
 
-    def _match_decomp(self, parts, words):
+    def _match_decomp(self, parts, words, name):
         results = []
-        if self._match_decomp_r(parts, words, results):
+        if self._match_decomp_r(parts, words, results, name):
             return results
         return None
 
@@ -180,7 +213,7 @@ class Eliza:
         # decomp.next_reasmb_index = index + 1
         return result
 
-    def _reassemble(self, reasmb, results, emotion):
+    def _reassemble(self, reasmb, results, emotion, name):
         output = []
         for reword in reasmb:
             if not reword:
@@ -196,6 +229,8 @@ class Eliza:
                 output.extend(insert)
             elif reword == '&em' and emotion:
                 output.append(emotion)
+            elif reword == '&name' and name:
+                output.append(name)
             else:
                 output.append(reword)
         return output
@@ -220,13 +255,16 @@ class Eliza:
                 output.append(word)
         return output
 
-    def _match_key(self, words, key, emotion):
+    def _match_key(self, words, key, emotion, name):
         for decomp in key.decomps:
             if decomp.emotions and emotion not in decomp.emotions:
                 log.debug('Input emotion is %s, decomp expected one of %s. Skipped decomp.', emotion, decomp.emotions)
                 continue
 
-            results = self._match_decomp(decomp.parts, words)
+            if decomp.has_names and not name:
+                log.debug('Skipped decomp %s because no name provided in input', decomp)
+
+            results = self._match_decomp(decomp.parts, words, name)
             if results is None:
                 log.debug('Decomp did not match: %s', decomp.parts)
                 continue
@@ -234,6 +272,7 @@ class Eliza:
             log.debug('Decomp results: %s', results)
             results = [self._sub(words, self.posts) for words in results]
             log.debug('Decomp results after posts: %s', results)
+
             reasmb = self._next_reasmb(decomp)
             log.debug('Using reassembly: %s', reasmb)
             if reasmb[0] == 'goto':
@@ -241,8 +280,18 @@ class Eliza:
                 if not goto_key in self.keys:
                     raise ValueError("Invalid goto key {}".format(goto_key))
                 log.debug('Goto key: %s', goto_key)
-                return self._match_key(words, self.keys[goto_key], emotion)
-            output = self._reassemble(reasmb, results, emotion)
+                return self._match_key(words, self.keys[goto_key], emotion, name)
+            output = self._reassemble(reasmb, results, emotion, name)
+
+            if name and decomp.remember_name:
+                if self.remembered['name'] and name != self.remembered['name']:
+                    output = self._reassemble(self._next_reasmb(
+                        self.keys['x_already_know_name'].decomps[0]), results,
+                                              emotion, self.remembered['name'])
+                    return output
+
+                self.remembered['name'] = name
+                log.debug('Remembered name: %s', name)
 
             if emotion and not decomp.skip_emotional_reaction:
                 reaction_preppend = self._sub_emotion(
@@ -265,13 +314,22 @@ class Eliza:
 
         strong_emotions = None
         dominant_emotion = None
-
-        if BotConfig.use_emmotion:
+        names = []
+        name = None
+        if BotConfig.use_emotion:
             emotions = get_emotion(text)
-            log.debug('Emotions: %s', emotions)
+            log.debug('Emotions API: %s', emotions)
             strong_emotions = strong_emotions_tuples(emotions)
             log.debug('Emotions after filtering: %s', strong_emotions)
             dominant_emotion = strong_emotions[0][0] if strong_emotions else None
+
+        if BotConfig.use_ner:
+            entities = get_ner(text)
+            log.debug('NER API output: %s', entities)
+            names = [e for e in entities if e['category'] == 'name']
+
+        if names:
+            name = names[0]['name']
 
         text = de_emojify(text)
 
@@ -290,7 +348,7 @@ class Eliza:
 
         output = None
         for key in keys:
-            output = self._match_key(words, key, dominant_emotion)
+            output = self._match_key(words, key, dominant_emotion, name)
             if output:
                 log.debug('Output from key: %s', output)
                 break
