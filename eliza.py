@@ -176,7 +176,7 @@ class Eliza:
             return True
         if not parts or (not words and parts not in ['*', '&name']):
             return False
-        if parts[0] == '&name':
+        if parts[0] == '&name' and name:
             words = [w for w in words if w not in name]
             results.append(name)
             return self._match_decomp_r(parts[1:], words, results, name)
